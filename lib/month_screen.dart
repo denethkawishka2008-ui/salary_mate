@@ -41,7 +41,6 @@ class _MonthScreenState extends State<MonthScreen> {
   Future<void> _saveData() async {
     final prefs = await SharedPreferences.getInstance();
     
-    // TextEditingControllers වල ඇති Text අගයන් JSON format එකකට හරවා සේව් කරයි
     List<Map<String, String>> dataToSave = _rows.map((row) {
       return {
         'date': row['date'].toString(),
@@ -64,11 +63,18 @@ class _MonthScreenState extends State<MonthScreen> {
       setState(() {
         _rows.clear();
         for (var item in decodedData) {
+          final hoursController = TextEditingController(text: item['hours']);
+          final paymentController = TextEditingController(text: item['payment']);
+          
+          // Controller වලට listeners එකතු කිරීම මඟින් text එකක් වෙනස් වන විට UI එක අප්ඩේට් වේ
+          hoursController.addListener(() => setState(() {}));
+          paymentController.addListener(() => setState(() {}));
+
           _rows.add({
             'date': item['date'],
             'client': item['client'].isEmpty ? null : item['client'],
-            'hours': TextEditingController(text: item['hours']),
-            'payment': TextEditingController(text: item['payment']),
+            'hours': hoursController,
+            'payment': paymentController,
           });
         }
       });
@@ -78,15 +84,22 @@ class _MonthScreenState extends State<MonthScreen> {
   void _addRowWithDate(DateTime date) {
     String formattedDate =
         "${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}";
+    
+    final hoursController = TextEditingController();
+    final paymentController = TextEditingController();
+
+    hoursController.addListener(() => setState(() {}));
+    paymentController.addListener(() => setState(() {}));
+
     setState(() {
       _rows.add({
         'date': formattedDate,
         'client': null,
-        'hours': TextEditingController(),
-        'payment': TextEditingController(),
+        'hours': hoursController,
+        'payment': paymentController,
       });
     });
-    _saveData(); // වෙනසක් වූ විට ඔටෝ සේව් වේ
+    _saveData();
   }
 
   void _showClientSummaryDialog() {
@@ -199,12 +212,18 @@ class _MonthScreenState extends State<MonthScreen> {
   }
 
   void _addRow() {
+    final hoursController = TextEditingController();
+    final paymentController = TextEditingController();
+
+    hoursController.addListener(() => setState(() {}));
+    paymentController.addListener(() => setState(() {}));
+
     setState(() {
       _rows.add({
         'date': 'Select Date',
         'client': null,
-        'hours': TextEditingController(),
-        'payment': TextEditingController(),
+        'hours': hoursController,
+        'payment': paymentController,
       });
     });
     _saveData();
@@ -505,7 +524,6 @@ class _MonthScreenState extends State<MonthScreen> {
                                       controller: _rows[index]['hours'],
                                       keyboardType: TextInputType.number,
                                       onChanged: (value) {
-                                        setState(() {});
                                         _saveData();
                                       },
                                       decoration: const InputDecoration(
@@ -521,7 +539,6 @@ class _MonthScreenState extends State<MonthScreen> {
                                       controller: _rows[index]['payment'],
                                       keyboardType: TextInputType.number,
                                       onChanged: (value) {
-                                        setState(() {});
                                         _saveData();
                                       },
                                       decoration: const InputDecoration(
@@ -552,7 +569,6 @@ class _MonthScreenState extends State<MonthScreen> {
                     },
                   ),
           ),
-
           
           TweenAnimationBuilder<double>(
             tween: Tween<double>(begin: 0.0, end: 1.0),
