@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import 'dart:convert';
 
 class MonthScreen extends StatefulWidget {
@@ -34,13 +35,12 @@ class _MonthScreenState extends State<MonthScreen> {
   @override
   void initState() {
     super.initState();
-    _loadData(); // ඇප් එක ඕපන් වන විට දත්ත ලෝඩ් කරගනී
+    _loadData();
   }
 
-  // SharedPreferences හරහා දත්ත Save කරගැනීම
   Future<void> _saveData() async {
     final prefs = await SharedPreferences.getInstance();
-    
+
     List<Map<String, String>> dataToSave = _rows.map((row) {
       return {
         'date': row['date'].toString(),
@@ -50,10 +50,12 @@ class _MonthScreenState extends State<MonthScreen> {
       };
     }).toList();
 
-    await prefs.setString('saved_rows_${widget.monthName}', jsonEncode(dataToSave));
+    await prefs.setString(
+      'saved_rows_${widget.monthName}',
+      jsonEncode(dataToSave),
+    );
   }
 
-  // සේව් කළ දත්ත නැවත ඇප් එකට ලබා ගැනීම
   Future<void> _loadData() async {
     final prefs = await SharedPreferences.getInstance();
     String? savedDataStr = prefs.getString('saved_rows_${widget.monthName}');
@@ -64,9 +66,10 @@ class _MonthScreenState extends State<MonthScreen> {
         _rows.clear();
         for (var item in decodedData) {
           final hoursController = TextEditingController(text: item['hours']);
-          final paymentController = TextEditingController(text: item['payment']);
-          
-          // Controller වලට listeners එකතු කිරීම මඟින් text එකක් වෙනස් වන විට UI එක අප්ඩේට් වේ
+          final paymentController = TextEditingController(
+            text: item['payment'],
+          );
+
           hoursController.addListener(() => setState(() {}));
           paymentController.addListener(() => setState(() {}));
 
@@ -84,7 +87,7 @@ class _MonthScreenState extends State<MonthScreen> {
   void _addRowWithDate(DateTime date) {
     String formattedDate =
         "${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}";
-    
+
     final hoursController = TextEditingController();
     final paymentController = TextEditingController();
 
@@ -197,8 +200,10 @@ class _MonthScreenState extends State<MonthScreen> {
       String? client = row['client'];
       if (client == null || client == '+ Add New Client') continue;
 
-      double hours = double.tryParse((row['hours'] as TextEditingController).text) ?? 0;
-      double payment = double.tryParse((row['payment'] as TextEditingController).text) ?? 0;
+      double hours =
+          double.tryParse((row['hours'] as TextEditingController).text) ?? 0;
+      double payment =
+          double.tryParse((row['payment'] as TextEditingController).text) ?? 0;
 
       if (!summary.containsKey(client)) {
         summary[client] = {'hours': 0.0, 'payment': 0.0};
@@ -209,24 +214,6 @@ class _MonthScreenState extends State<MonthScreen> {
     }
 
     return summary;
-  }
-
-  void _addRow() {
-    final hoursController = TextEditingController();
-    final paymentController = TextEditingController();
-
-    hoursController.addListener(() => setState(() {}));
-    paymentController.addListener(() => setState(() {}));
-
-    setState(() {
-      _rows.add({
-        'date': 'Select Date',
-        'client': null,
-        'hours': hoursController,
-        'payment': paymentController,
-      });
-    });
-    _saveData();
   }
 
   Future<void> _selectDate(int index) async {
@@ -273,7 +260,9 @@ class _MonthScreenState extends State<MonthScreen> {
                 String newClientName = newClientController.text.trim();
                 if (newClientName.isNotEmpty) {
                   setState(() {
-                    _clients.insert(_clients.length - 1, newClientName);
+                    if (!_clients.contains(newClientName)) {
+                      _clients.insert(_clients.length - 1, newClientName);
+                    }
                     _rows[index]['client'] = newClientName;
                   });
                   _saveData();
@@ -290,6 +279,33 @@ class _MonthScreenState extends State<MonthScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Group rows by Date
+    Map<String, List<Map<String, dynamic>>> groupedRows = {};
+    for (int i = 0; i < _rows.length; i++) {
+      var row = _rows[i];
+      // Attach original index for modification/deletion reference
+      var rowWithIndex = Map<String, dynamic>.from(row);
+      rowWithIndex['originalIndex'] = i;
+
+      String dateKey = row['date'] ?? 'Unknown Date';
+      if (!groupedRows.containsKey(dateKey)) {
+        groupedRows[dateKey] = [];
+      }
+      groupedRows[dateKey]!.add(rowWithIndex);
+    }
+
+    // Sort dates descending (newest first) or ascending as preferred
+    var sortedDates = groupedRows.keys.toList()..sort((a, b) => b.compareTo(a));
+
+    DateTime now = DateTime.now();
+    String todayStr =
+        "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+
+    // Yesterday calculation
+    DateTime yesterday = now.subtract(const Duration(days: 1));
+    String yesterdayStr =
+        "${yesterday.year}-${yesterday.month.toString().padLeft(2, '0')}-${yesterday.day.toString().padLeft(2, '0')}";
+
     return Scaffold(
       appBar: AppBar(
         title: Text('${widget.monthName} Details'),
@@ -356,10 +372,7 @@ class _MonthScreenState extends State<MonthScreen> {
             builder: (context, value, child) {
               return Transform.scale(
                 scale: value,
-                child: Opacity(
-                  opacity: value,
-                  child: child,
-                ),
+                child: Opacity(opacity: value, child: child),
               );
             },
             child: Container(
@@ -388,7 +401,11 @@ class _MonthScreenState extends State<MonthScreen> {
                         children: [
                           Row(
                             children: [
-                              const Icon(Icons.list_alt, size: 14, color: Colors.blueGrey),
+                              const Icon(
+                                Icons.list_alt,
+                                size: 14,
+                                color: Colors.blueGrey,
+                              ),
                               const SizedBox(width: 4),
                               Text(
                                 'Entries: ${_rows.length}',
@@ -403,7 +420,11 @@ class _MonthScreenState extends State<MonthScreen> {
                           const SizedBox(width: 12),
                           Row(
                             children: [
-                              const Icon(Icons.access_time, size: 14, color: Colors.orange),
+                              const Icon(
+                                Icons.access_time,
+                                size: 14,
+                                color: Colors.orange,
+                              ),
                               const SizedBox(width: 4),
                               Text(
                                 'Hours: ${_calculatetotalhours().toStringAsFixed(1)}h',
@@ -418,7 +439,11 @@ class _MonthScreenState extends State<MonthScreen> {
                           const SizedBox(width: 12),
                           Row(
                             children: [
-                              const Icon(Icons.payments, size: 14, color: Colors.green),
+                              const Icon(
+                                Icons.payments,
+                                size: 14,
+                                color: Colors.green,
+                              ),
                               const SizedBox(width: 4),
                               Text(
                                 'Pay: LKR ${_calculatetotalpay().toStringAsFixed(2)}',
@@ -438,12 +463,18 @@ class _MonthScreenState extends State<MonthScreen> {
                   ElevatedButton.icon(
                     onPressed: _showClientSummaryDialog,
                     icon: const Icon(Icons.table_chart, size: 14),
-                    label: const Text('Summary', style: TextStyle(fontSize: 12)),
+                    label: const Text(
+                      'Summary',
+                      style: TextStyle(fontSize: 12),
+                    ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.amber,
                       foregroundColor: Colors.black87,
                       elevation: 2,
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 8,
+                      ),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -454,132 +485,321 @@ class _MonthScreenState extends State<MonthScreen> {
             ),
           ),
 
-          // ListView with data entries
+          // ListView grouped by Date Categories
           Expanded(
             child: _rows.isEmpty
                 ? Center(
                     child: Text(
                       _isCalendarVisible
                           ? 'Tap a date on the calendar above to add an entry.'
-                          : 'Tap the calendar icon on top to pick a date, or use "Add Row".',
+                          : 'Tap the calendar icon on top to pick a date.',
                       style: const TextStyle(color: Colors.grey),
                       textAlign: TextAlign.center,
                     ),
                   )
                 : ListView.builder(
-                    itemCount: _rows.length,
-                    itemBuilder: (context, index) {
-                      return Card(
+                    itemCount: sortedDates.length,
+                    itemBuilder: (context, dateIndex) {
+                      String dateKey = sortedDates[dateIndex];
+                      List<Map<String, dynamic>> dateRows =
+                          groupedRows[dateKey]!;
+
+                      // Calculate totals for this specific date category
+                      double dateTotalHours = 0;
+                      double dateTotalPay = 0;
+                      for (var r in dateRows) {
+                        dateTotalHours +=
+                            double.tryParse(
+                              (r['hours'] as TextEditingController).text,
+                            ) ??
+                            0;
+                        dateTotalPay +=
+                            double.tryParse(
+                              (r['payment'] as TextEditingController).text,
+                            ) ??
+                            0;
+                      }
+
+                      String displayDateLabel = dateKey;
+                      Color headerColor = Colors.blueGrey.shade700;
+                      if (dateKey == todayStr) {
+                        displayDateLabel = 'Today ($dateKey)';
+                        headerColor = Colors.blueAccent;
+                      } else if (dateKey == yesterdayStr) {
+                        displayDateLabel = 'Yesterday ($dateKey)';
+                        headerColor = Colors.teal;
+                      }
+
+                      return Container(
                         margin: const EdgeInsets.symmetric(
                           horizontal: 10,
-                          vertical: 6,
+                          vertical: 8,
                         ),
-                        elevation: 2,
-                        child: Padding(
-                          padding: const EdgeInsets.all(10.0),
-                          child: Column(
-                            children: [
-                              Row(
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade50,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.grey.shade300),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Date Category Header
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: headerColor,
+                                borderRadius: const BorderRadius.only(
+                                  topLeft: Radius.circular(11),
+                                  topRight: Radius.circular(11),
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Expanded(
-                                    child: OutlinedButton.icon(
-                                      onPressed: () => _selectDate(index),
-                                      icon: const Icon(
-                                        Icons.calendar_today,
-                                        size: 16,
-                                      ),
-                                      label: Text(_rows[index]['date']),
+                                  Text(
+                                    displayDateLabel,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
                                     ),
                                   ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: DropdownButtonFormField<String>(
-                                      value: _rows[index]['client'],
-                                      hint: const Text('Select Client'),
-                                      items: _clients.map((String client) {
-                                        return DropdownMenuItem<String>(
-                                          value: client,
-                                          child: Text(client),
-                                        );
-                                      }).toList(),
-                                      onChanged: (String? newValue) {
-                                        if (newValue == '+ Add New Client') {
-                                          _showAddClientDialog(index);
-                                        } else {
-                                          setState(() {
-                                            _rows[index]['client'] = newValue;
-                                          });
-                                          _saveData();
-                                        }
-                                      },
+                                  Text(
+                                    'Hours: ${dateTotalHours.toStringAsFixed(1)}h | Pay: LKR ${dateTotalPay.toStringAsFixed(2)}',
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w500,
                                     ),
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 8),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: TextField(
-                                      controller: _rows[index]['hours'],
-                                      keyboardType: TextInputType.number,
-                                      onChanged: (value) {
-                                        _saveData();
-                                      },
-                                      decoration: const InputDecoration(
-                                        labelText: 'Hours',
-                                        border: OutlineInputBorder(),
-                                        isDense: true,
-                                      ),
+                            ),
+
+                            // Rows belonging to this date
+                            ListView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemCount: dateRows.length,
+                              itemBuilder: (context, rowIndex) {
+                                var row = dateRows[rowIndex];
+                                int actualIndex = row['originalIndex'];
+
+                                String currentClient =
+                                    row['client'] ?? 'Unassigned';
+                                double catTotalHours = 0;
+                                double catTotalPay = 0;
+                                int catEntryCount = 0;
+
+                                for (var r in _rows) {
+                                  if (r['client'] == currentClient &&
+                                      currentClient != '+ Add New Client') {
+                                    catEntryCount++;
+                                    catTotalHours +=
+                                        double.tryParse(
+                                          (r['hours'] as TextEditingController)
+                                              .text,
+                                        ) ??
+                                        0;
+                                    catTotalPay +=
+                                        double.tryParse(
+                                          (r['payment']
+                                                  as TextEditingController)
+                                              .text,
+                                        ) ??
+                                        0;
+                                  }
+                                }
+
+                                String? dropdownValue = row['client'];
+                                if (dropdownValue != null &&
+                                    !_clients.contains(dropdownValue)) {
+                                  dropdownValue = null;
+                                }
+
+                                return Card(
+                                  margin: const EdgeInsets.all(8),
+                                  elevation: 2,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    side: BorderSide(
+                                      color: Colors.grey.shade200,
                                     ),
                                   ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: TextField(
-                                      controller: _rows[index]['payment'],
-                                      keyboardType: TextInputType.number,
-                                      onChanged: (value) {
-                                        _saveData();
-                                      },
-                                      decoration: const InputDecoration(
-                                        labelText: 'Payment',
-                                        border: OutlineInputBorder(),
-                                        isDense: true,
-                                      ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(8.0),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Expanded(
+                                              child: OutlinedButton.icon(
+                                                onPressed: () =>
+                                                    _selectDate(actualIndex),
+                                                icon: const Icon(
+                                                  Icons.calendar_today,
+                                                  size: 14,
+                                                ),
+                                                label: Text(
+                                                  row['date'],
+                                                  style: const TextStyle(
+                                                    fontSize: 12,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: DropdownButtonFormField<String>(
+                                                value: dropdownValue,
+                                                hint: const Text(
+                                                  'Select Client',
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                  ),
+                                                ),
+                                                items: _clients.map((
+                                                  String client,
+                                                ) {
+                                                  return DropdownMenuItem<
+                                                    String
+                                                  >(
+                                                    value: client,
+                                                    child: Text(
+                                                      client,
+                                                      style: const TextStyle(
+                                                        fontSize: 12,
+                                                      ),
+                                                    ),
+                                                  );
+                                                }).toList(),
+                                                onChanged: (String? newValue) {
+                                                  if (newValue ==
+                                                      '+ Add New Client') {
+                                                    _showAddClientDialog(
+                                                      actualIndex,
+                                                    );
+                                                  } else {
+                                                    setState(() {
+                                                      _rows[actualIndex]['client'] =
+                                                          newValue;
+                                                    });
+                                                    _saveData();
+                                                  }
+                                                },
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 8),
+
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: TextField(
+                                                controller: row['hours'],
+                                                keyboardType:
+                                                    TextInputType.number,
+                                                onChanged: (value) {
+                                                  setState(() {});
+                                                  _saveData();
+                                                },
+                                                decoration:
+                                                    const InputDecoration(
+                                                      labelText: 'Hours',
+                                                      border:
+                                                          OutlineInputBorder(),
+                                                      isDense: true,
+                                                    ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: TextField(
+                                                controller: row['payment'],
+                                                keyboardType:
+                                                    TextInputType.number,
+                                                onChanged: (value) {
+                                                  setState(() {});
+                                                  _saveData();
+                                                },
+                                                decoration:
+                                                    const InputDecoration(
+                                                      labelText: 'Payment',
+                                                      border:
+                                                          OutlineInputBorder(),
+                                                      isDense: true,
+                                                    ),
+                                              ),
+                                            ),
+                                            IconButton(
+                                              icon: const Icon(
+                                                Icons.delete,
+                                                color: Colors.red,
+                                                size: 20,
+                                              ),
+                                              onPressed: () {
+                                                setState(() {
+                                                  _rows.removeAt(actualIndex);
+                                                });
+                                                _saveData();
+                                              },
+                                            ),
+                                          ],
+                                        ),
+
+                                        if (currentClient !=
+                                                '+ Add New Client' &&
+                                            currentClient != 'Unassigned') ...[
+                                          const Divider(height: 12),
+                                          Container(
+                                            padding: const EdgeInsets.all(6),
+                                            decoration: BoxDecoration(
+                                              color: Colors.amber.shade50,
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
+                                              border: Border.all(
+                                                color: Colors.amber.shade200,
+                                              ),
+                                            ),
+                                            child: Text(
+                                              '📌 Client "$currentClient" Total -> Entries: $catEntryCount | Hours: ${catTotalHours.toStringAsFixed(1)}h | Pay: LKR ${catTotalPay.toStringAsFixed(2)}',
+                                              style: const TextStyle(
+                                                fontSize: 10,
+                                                color: Colors.black87,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ],
                                     ),
                                   ),
-                                  IconButton(
-                                    icon: const Icon(
-                                      Icons.delete,
-                                      color: Colors.red,
-                                    ),
-                                    onPressed: () {
-                                      setState(() {
-                                        _rows.removeAt(index);
-                                      });
-                                      _saveData();
-                                    },
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
+                                );
+                              },
+                            ),
+                          ],
                         ),
                       );
                     },
                   ),
           ),
-          
+
+          // Footer branding animation container
           TweenAnimationBuilder<double>(
             tween: Tween<double>(begin: 0.0, end: 1.0),
             duration: const Duration(milliseconds: 800),
             builder: (context, value, child) {
               return Transform.translate(
                 offset: Offset(0, 50 * (1 - value)),
-                child: Opacity(
-                  opacity: value,
-                  child: child,
-                ),
+                child: Opacity(opacity: value, child: child),
               );
             },
             child: Container(
@@ -624,7 +844,10 @@ class _MonthScreenState extends State<MonthScreen> {
                   ),
                   const SizedBox(height: 4),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.black87,
                       borderRadius: BorderRadius.circular(20),
@@ -644,19 +867,14 @@ class _MonthScreenState extends State<MonthScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _addRow,
-        backgroundColor: Colors.amber,
-        icon: const Icon(Icons.add),
-        label: const Text('Add Row'),
-      ),
     );
   }
 
   double _calculatetotalpay() {
     double total = 0;
     for (var row in _rows) {
-      double payment = double.tryParse((row['payment'] as TextEditingController).text) ?? 0;
+      double payment =
+          double.tryParse((row['payment'] as TextEditingController).text) ?? 0;
       total += payment;
     }
     return total;
@@ -665,7 +883,8 @@ class _MonthScreenState extends State<MonthScreen> {
   double _calculatetotalhours() {
     double total = 0;
     for (var row in _rows) {
-      double hours = double.tryParse((row['hours'] as TextEditingController).text) ?? 0;
+      double hours =
+          double.tryParse((row['hours'] as TextEditingController).text) ?? 0;
       total += hours;
     }
     return total;
